@@ -1,0 +1,201 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role-based access control and agency association.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["agency", "agent", "escalation_manager", "admin"] },
+        "agencyId": { "type": "string" },
+        "region": { "type": "string", "enum": ["APAC", "EMEA", "Americas", "Global"] },
+        "specialization": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "email", "name", "role", "createdAt"]
+    },
+    "Agency": {
+      "title": "Agency",
+      "description": "Registered B2B Travel Agency tenant record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "country": { "type": "string" },
+        "region": { "type": "string", "enum": ["APAC", "EMEA", "Americas", "Global"] },
+        "tier": { "type": "string", "enum": ["Platinum", "Gold", "Silver"] },
+        "contactEmail": { "type": "string" },
+        "contactPhone": { "type": "string" }
+      },
+      "required": ["id", "name", "code", "region", "tier"]
+    },
+    "Ticket": {
+      "title": "Ticket",
+      "description": "Context-rich travel operations case record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "agencyId": { "type": "string" },
+        "agencyName": { "type": "string" },
+        "tboh": { "type": "string" },
+        "category": { "type": "string" },
+        "intent": { "type": "string" },
+        "priority": { "type": "string", "enum": ["Urgent", "High", "Medium", "Low"] },
+        "status": { "type": "string", "enum": ["New", "Open", "Pending", "Escalated", "Resolved", "Closed"] },
+        "region": { "type": "string" },
+        "assignedAgentId": { "type": "string" },
+        "assignedAgentName": { "type": "string" },
+        "routingReason": { "type": "string" },
+        "slaDeadline": { "type": "string" },
+        "slaStatus": { "type": "string", "enum": ["On Track", "At Risk", "Breached"] },
+        "slaRemainingMinutes": { "type": "number" },
+        "slaTargetHours": { "type": "number" },
+        "isEscalated": { "type": "boolean" },
+        "escalationReason": { "type": "string" },
+        "resolutionSummary": { "type": "string" },
+        "linkedTicketIds": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "description", "agencyId", "tboh", "category", "priority", "status", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Public reply, internal agent note, or supplier communication message.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ticketId": { "type": "string" },
+        "conversationId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderRole": { "type": "string" },
+        "recipientType": { "type": "string", "enum": ["agency_public", "internal_agent_only", "supplier_side"] },
+        "content": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "ticketId", "senderId", "senderName", "recipientType", "content", "timestamp"]
+    },
+    "SideConversation": {
+      "title": "SideConversation",
+      "description": "Supplier side conversation thread with persistent recipients.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ticketId": { "type": "string" },
+        "title": { "type": "string" },
+        "supplierName": { "type": "string" },
+        "status": { "type": "string" },
+        "recipients": { "type": "array" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "ticketId", "title", "supplierName", "status", "createdAt"]
+    },
+    "TicketEvent": {
+      "title": "TicketEvent",
+      "description": "Immutable activity timeline event.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ticketId": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "actorId": { "type": "string" },
+        "actorName": { "type": "string" },
+        "actorRole": { "type": "string" },
+        "eventType": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["id", "ticketId", "timestamp", "actorName", "eventType", "description"]
+    },
+    "RoutingRule": {
+      "title": "RoutingRule",
+      "description": "Intelligent routing configuration rule.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "priority": { "type": "number" },
+        "conditions": { "type": "object" },
+        "targetAgentId": { "type": "string" },
+        "ruleExplanation": { "type": "string" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["id", "name", "priority", "ruleExplanation", "active"]
+    },
+    "SlaPolicy": {
+      "title": "SlaPolicy",
+      "description": "Travel-aware SLA policy configuration.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "priority": { "type": "string" },
+        "targetResolutionHours": { "type": "number" },
+        "warningThresholdMinutes": { "type": "number" },
+        "checkInProximityMultiplier": { "type": "number" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["id", "name", "priority", "targetResolutionHours", "active"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Administrative system action log.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "action": { "type": "string" },
+        "resource": { "type": "string" },
+        "resourceId": { "type": "string" },
+        "details": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "userName", "action", "resource", "details"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles and RBAC role assignments."
+    },
+    "/agencies/{agencyId}": {
+      "schema": { "$ref": "#/entities/Agency" },
+      "description": "Registered B2B travel agencies."
+    },
+    "/tickets/{ticketId}": {
+      "schema": { "$ref": "#/entities/Ticket" },
+      "description": "Operational travel support cases."
+    },
+    "/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/Message" },
+      "description": "Public customer messages, internal notes, and supplier chats."
+    },
+    "/conversations/{conversationId}": {
+      "schema": { "$ref": "#/entities/SideConversation" },
+      "description": "Supplier side conversation metadata and recipient rosters."
+    },
+    "/ticketEvents/{eventId}": {
+      "schema": { "$ref": "#/entities/TicketEvent" },
+      "description": "Chronological audit timeline events for tickets."
+    },
+    "/routingRules/{ruleId}": {
+      "schema": { "$ref": "#/entities/RoutingRule" },
+      "description": "Automated routing rules."
+    },
+    "/slaPolicies/{policyId}": {
+      "schema": { "$ref": "#/entities/SlaPolicy" },
+      "description": "Travel-aware SLA thresholds."
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "System compliance and administrative audit logs."
+    }
+  }
+}

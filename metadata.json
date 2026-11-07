@@ -1,0 +1,6 @@
+{
+  "name": "OpsDesk – AI Travel Operations Platform",
+  "description": "Context-rich, travel-aware B2B operations ticketing platform solving isolated tickets, intelligent routing, supplier side conversations, travel-aware SLA management, and operations analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
