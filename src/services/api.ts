@@ -58,6 +58,24 @@ class ApiService {
   }
 
   // --- Auth & Users ---
+  async sendLoginAlert(payload: {
+    email: string;
+    displayName?: string;
+    providerId?: string;
+    deviceInfo?: Record<string, any>;
+    loginTime?: string;
+  }): Promise<{ success: boolean; alertId?: string; deliveryStatus?: string; message?: string }> {
+    try {
+      return await this.fetchJson('/api/auth/login-alert', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    } catch (e: any) {
+      console.warn('Login alert dispatch warning:', e?.message || e);
+      return { success: false, message: e?.message };
+    }
+  }
+
   async getMe(): Promise<{ user: User }> {
     return this.fetchJson<{ user: User }>('/api/auth/me');
   }

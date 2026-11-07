@@ -1487,7 +1487,7 @@ class DatabaseRepository {
       .slice(0, limit);
   }
 
-  private addAuditLog(log: Omit<AuditLog, 'id' | 'timestamp'>) {
+  addAuditLog(log: Omit<AuditLog, 'id' | 'timestamp'>) {
     this.data.auditLogs.unshift({
       ...log,
       id: `aud_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,

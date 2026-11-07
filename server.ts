@@ -8,6 +8,7 @@ import {
   generateTicketSummary,
   suggestResponseDraft,
 } from './src/server/aiService.ts';
+import { sendLoginAlertEmail } from './src/server/emailService.ts';
 import { User, UserRole, TicketCategory, TicketPriority, Region } from './src/types/index.ts';
 
 dotenv.config();
@@ -40,6 +41,40 @@ app.get('/api/auth/users', (_req: Request, res: Response) => {
 app.get('/api/agencies', (_req: Request, res: Response) => {
   const agencies = db.getAgencies();
   res.json({ agencies });
+});
+
+// Security Login Alert Notification Endpoint
+app.post('/api/auth/login-alert', async (req: Request, res: Response) => {
+  const { email, displayName, providerId, deviceInfo, loginTime } = req.body;
+  if (!email) {
+    res.status(400).json({ error: 'Email is required for login alert notification' });
+    return;
+  }
+
+  const clientIp = ((req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket.remoteAddress || '').replace('::ffff:', '');
+  const userAgent = (req.headers['user-agent'] as string) || deviceInfo?.userAgent;
+
+  try {
+    const result = await sendLoginAlertEmail({
+      email,
+      displayName,
+      providerId,
+      deviceInfo: {
+        ...(deviceInfo || {}),
+        userAgent,
+      },
+      clientIp,
+      loginTime: loginTime || new Date().toISOString(),
+    });
+    res.json(result);
+  } catch (err: any) {
+    console.error('Failed to process login alert email:', err);
+    res.status(200).json({
+      success: false,
+      deliveryStatus: 'failed',
+      message: err.message || 'Failed to dispatch email alert',
+    });
+  }
 });
 
 // ----------------- TICKETS -----------------

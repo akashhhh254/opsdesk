@@ -15,7 +15,28 @@ export const db = initializeFirestore(
   (firebaseConfig as any).firestoreDatabaseId
 );
 export const auth = getAuth(app);
+
+// Default Google Auth Provider with strict account chooser prompt and standard profile/email scopes
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope('profile');
+googleProvider.addScope('email');
+googleProvider.setCustomParameters({
+  prompt: 'select_account',
+});
+
+/**
+ * Creates a configured GoogleAuthProvider with prompt control
+ * @param forceConsent - if true, sets prompt: 'select_account consent' to force consent dialog
+ */
+export function createGoogleProvider(forceConsent = false): GoogleAuthProvider {
+  const provider = new GoogleAuthProvider();
+  provider.addScope('profile');
+  provider.addScope('email');
+  provider.setCustomParameters({
+    prompt: forceConsent ? 'select_account consent' : 'select_account',
+  });
+  return provider;
+}
 
 export enum OperationType {
   CREATE = 'create',

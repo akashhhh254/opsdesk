@@ -5,13 +5,17 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  setPersistence,
+  browserLocalPersistence,
   signOut as fbSignOut,
   sendPasswordResetEmail,
   sendEmailVerification,
   updateProfile,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { auth, db, googleProvider } from '../lib/firebase.ts';
+import { auth, db, createGoogleProvider } from '../lib/firebase.ts';
 import { User, UserRole, Region } from '../types/index.ts';
 import { api } from '../services/api.ts';
 
@@ -25,7 +29,7 @@ interface AuthContextType {
   isEmailVerified: boolean;
   signInWithEmail: (email: string, pass: string) => Promise<void>;
   signUpWithEmail: (email: string, pass: string, name: string, agencyName?: string) => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: (options?: { forceConsent?: boolean; useRedirect?: boolean }) => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
   resendVerificationEmail: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -53,6 +57,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     api.getUsers().then(({ users }) => setAllUsers(users)).catch(console.error);
   }, []);
 
+  // Dispatches application-controlled security login alert email
+  const dispatchLoginAlert = (fbUser: FirebaseUser, profile: User) => {
+    const targetEmail = fbUser.email || profile.email;
+    if (!targetEmail) return;
+
+    api
+      .sendLoginAlert({
+        email: targetEmail,
+        displayName: fbUser.displayName || profile.name,
+        providerId: fbUser.providerData[0]?.providerId || 'google.com',
+        deviceInfo: {
+          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+          platform: typeof navigator !== 'undefined' ? navigator.platform : '',
+          language: typeof navigator !== 'undefined' ? navigator.language : '',
+          screenResolution:
+            typeof window !== 'undefined' ? `${window.screen.width}x${window.screen.height}` : '',
+        },
+        loginTime: new Date().toISOString(),
+      })
+      .then((res) => {
+        if (res?.message) {
+          console.info('[Security Notification]', res.message);
+        }
+      })
+      .catch((e) => console.warn('Login alert background notification warning:', e));
+  };
+
   // Sync profile from Firestore or provision profile
   const fetchOrCreateProfile = async (fbUser: FirebaseUser): Promise<User> => {
     const isSuperAdmin = fbUser.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
@@ -61,12 +92,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const fallbackProfile: User = {
       id: fbUser.uid,
-      name: fbUser.displayName || fbUser.email?.split('@')[0] || (isSuperAdmin ? 'Akash Thakare (Admin)' : 'Operations User'),
+      name:
+        fbUser.displayName ||
+        fbUser.email?.split('@')[0] ||
+        (isSuperAdmin ? 'Akash Thakare (Admin)' : 'Operations User'),
       email: fbUser.email || '',
       role: defaultRole,
       agencyId: defaultAgencyId,
       region: 'EMEA',
       specialization: isSuperAdmin ? ['Urgent Triage', 'Global Ops'] : [],
+      avatarUrl: fbUser.photoURL || undefined,
     };
 
     try {
@@ -75,16 +110,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (snap.exists()) {
         const data = snap.data() as User;
+        const updates: Partial<User> = {};
+
         // Auto-grant admin role if email matches the configured admin account
         if (isSuperAdmin && data.role !== 'admin') {
-          const adminProfile: User = { ...data, role: 'admin' };
-          updateDoc(userDocRef, { role: 'admin' }).catch(console.warn);
-          return adminProfile;
+          updates.role = 'admin';
+        }
+        // Sync profile photo from Google if not yet populated
+        if (fbUser.photoURL && !data.avatarUrl) {
+          updates.avatarUrl = fbUser.photoURL;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          updateDoc(userDocRef, updates).catch(console.warn);
+          return { ...data, ...updates };
         }
         return data;
       }
 
-      // Provision new user profile
+      // Provision new user profile in Firestore
       const docPayload: Record<string, any> = {
         id: fallbackProfile.id,
         name: fallbackProfile.name,
@@ -92,7 +136,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role: fallbackProfile.role,
         agencyId: fallbackProfile.agencyId || '',
         region: fallbackProfile.region || 'EMEA',
-        specialization: fallbackProfile.specialization && fallbackProfile.specialization.length > 0 ? fallbackProfile.specialization : [],
+        specialization:
+          fallbackProfile.specialization && fallbackProfile.specialization.length > 0
+            ? fallbackProfile.specialization
+            : [],
+        avatarUrl: fallbackProfile.avatarUrl || '',
+        providerId: fbUser.providerData[0]?.providerId || 'google.com',
         createdAt: new Date().toISOString(),
       };
 
@@ -107,12 +156,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await setDoc(userDocRef, sanitizedPayload);
       return fallbackProfile;
     } catch (err: any) {
-      console.warn('Firestore user profile offline/unreachable, operating with authenticated session profile:', err?.message || err);
+      console.warn(
+        'Firestore user profile offline/unreachable, operating with authenticated session profile:',
+        err?.message || err
+      );
       return fallbackProfile;
     }
   };
 
   useEffect(() => {
+    // 1. Enforce browser local persistence
+    setPersistence(auth, browserLocalPersistence).catch(console.warn);
+
+    // 2. Check for redirect authentication result (for mobile or pop-up blocked environments)
+    getRedirectResult(auth)
+      .then(async (cred) => {
+        if (cred?.user) {
+          const profile = await fetchOrCreateProfile(cred.user);
+          setUserProfile(profile);
+          api.setCurrentUserId(profile.id);
+          dispatchLoginAlert(cred.user, profile);
+        }
+      })
+      .catch((err) => {
+        if (err.code && err.code !== 'auth/null-user') {
+          console.warn('Redirect authentication callback:', err.code, err.message);
+        }
+      });
+
+    // 3. Monitor ongoing auth state changes
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       setIsLoading(true);
       setError(null);
@@ -144,6 +216,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const profile = await fetchOrCreateProfile(cred.user);
       setUserProfile(profile);
       api.setCurrentUserId(profile.id);
+      dispatchLoginAlert(cred.user, profile);
     } catch (err: any) {
       setError(mapAuthError(err.code || err.message));
       throw err;
@@ -158,7 +231,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, pass);
       await updateProfile(cred.user, { displayName: name });
-      
+
       // Send verification email
       try {
         await sendEmailVerification(cred.user);
@@ -169,6 +242,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const profile = await fetchOrCreateProfile(cred.user);
       setUserProfile(profile);
       api.setCurrentUserId(profile.id);
+      dispatchLoginAlert(cred.user, profile);
     } catch (err: any) {
       setError(mapAuthError(err.code || err.message));
       throw err;
@@ -177,16 +251,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (options?: { forceConsent?: boolean; useRedirect?: boolean }) => {
     setError(null);
     setIsLoading(true);
+    const provider = createGoogleProvider(options?.forceConsent);
+
     try {
-      const cred = await signInWithPopup(auth, googleProvider);
+      if (options?.useRedirect) {
+        await signInWithRedirect(auth, provider);
+        return;
+      }
+
+      const cred = await signInWithPopup(auth, provider);
       const profile = await fetchOrCreateProfile(cred.user);
       setUserProfile(profile);
       api.setCurrentUserId(profile.id);
+      dispatchLoginAlert(cred.user, profile);
     } catch (err: any) {
-      if (err.code !== 'auth/popup-closed-by-user') {
+      console.warn('Google OAuth login error:', err.code, err.message);
+      if (err.code === 'auth/popup-blocked') {
+        setError('Popup was blocked by your browser. Please allow popups or use "Sign In with Redirect" below.');
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        setError('Google sign-in was closed before selecting an account.');
+      } else {
         setError(mapAuthError(err.code || err.message));
       }
       throw err;
@@ -244,7 +331,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const isEmailVerified = Boolean(firebaseUser?.emailVerified || firebaseUser?.providerData.some(p => p.providerId === 'google.com'));
+  const isEmailVerified = Boolean(
+    firebaseUser?.emailVerified ||
+      firebaseUser?.providerData.some((p) => p.providerId === 'google.com')
+  );
 
   const isAgency = userProfile?.role === 'agency';
   const isAgent = userProfile?.role === 'agent';
@@ -303,7 +393,17 @@ function mapAuthError(codeOrMsg: string): string {
     case 'auth/weak-password':
       return 'Password should be at least 6 characters.';
     case 'auth/popup-blocked':
-      return 'The Google sign-in popup was blocked by your browser. Please allow popups.';
+      return 'The Google sign-in popup was blocked by your browser. Please allow popups or use Redirect mode.';
+    case 'auth/popup-closed-by-user':
+      return 'Google sign-in was closed before completing account selection.';
+    case 'auth/cancelled-popup-request':
+      return 'Previous sign-in popup was superseded. Please select your account again.';
+    case 'auth/unauthorized-domain':
+      return 'This domain is not authorized for Google OAuth in your Firebase project. Please add this domain to Authorized Domains in Firebase Authentication Settings.';
+    case 'auth/operation-not-allowed':
+      return 'Google sign-in provider is not enabled in Firebase Authentication console.';
+    case 'auth/account-exists-with-different-credential':
+      return 'An account already exists with the same email address using another login method. Please sign in with your original method.';
     case 'auth/network-request-failed':
       return 'Network error. Please check your internet connection and retry.';
     default:

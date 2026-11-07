@@ -86,13 +86,13 @@ export const AuthScreen: React.FC = () => {
     }
   };
 
-  const handleGoogleSignIn = async () => {
+  const handleGoogleSignIn = async (forceConsent = false, useRedirect = false) => {
     setLocalError(null);
     clearError();
     try {
-      await signInWithGoogle();
+      await signInWithGoogle({ forceConsent, useRedirect });
     } catch (err: any) {
-      // Error handled in context
+      // Error mapped in context
     }
   };
 
@@ -185,12 +185,13 @@ export const AuthScreen: React.FC = () => {
 
           {/* Google Sign-In */}
           {mode !== 'forgot' && (
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               <button
                 type="button"
-                onClick={handleGoogleSignIn}
+                onClick={() => handleGoogleSignIn(false, false)}
                 disabled={isLoading}
-                className="w-full flex items-center justify-center gap-3 px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl text-xs font-semibold text-slate-700 shadow-xs transition-colors cursor-pointer"
+                className="w-full flex items-center justify-center gap-3 px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 hover:border-slate-400 rounded-xl text-xs font-semibold text-slate-700 shadow-xs transition-colors cursor-pointer"
+                title="Sign in with your Google account using the account selector"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24">
                   <path
@@ -213,7 +214,28 @@ export const AuthScreen: React.FC = () => {
                 <span>Continue with Google</span>
               </button>
 
-              <div className="relative flex items-center justify-center">
+              <div className="flex items-center justify-between px-1 text-[11px] text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => handleGoogleSignIn(true, false)}
+                  disabled={isLoading}
+                  className="hover:text-sky-600 transition-colors underline decoration-slate-300 underline-offset-2 cursor-pointer"
+                  title="Display Google Account Chooser to select a different Google account"
+                >
+                  Switch Google Account
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleGoogleSignIn(false, true)}
+                  disabled={isLoading}
+                  className="hover:text-sky-600 transition-colors underline decoration-slate-300 underline-offset-2 cursor-pointer"
+                  title="Use full page redirect flow for mobile browsers or when popups are blocked"
+                >
+                  Redirect Mode (Mobile)
+                </button>
+              </div>
+
+              <div className="relative flex items-center justify-center pt-1">
                 <div className="border-t border-slate-200 w-full" />
                 <span className="bg-white px-3 text-[11px] text-slate-400 uppercase tracking-wider font-medium">
                   or email
@@ -355,9 +377,12 @@ export const AuthScreen: React.FC = () => {
           </form>
 
           {/* Privacy & Security Note */}
-          <div className="pt-2 text-center text-[11px] text-slate-400 flex items-center justify-center gap-1.5">
-            <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
-            <span>Secured via Firebase Authentication & RBAC</span>
+          <div className="pt-2 text-center text-[11px] text-slate-400 flex flex-col items-center justify-center gap-1">
+            <div className="flex items-center justify-center gap-1.5 text-slate-500">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span>Google OAuth 2.0 • Session Persistence • Login Alert Security</span>
+            </div>
+            <span className="text-[10px] text-slate-400">Security login notifications dispatched upon every session</span>
           </div>
         </div>
       </div>

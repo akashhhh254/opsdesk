@@ -147,9 +147,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                 className="flex items-center gap-2.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer text-left"
               >
-                <div className="w-7 h-7 rounded-full bg-slate-800 text-white flex items-center justify-center text-xs font-bold shrink-0">
-                  {userProfile?.name?.charAt(0) || firebaseUser?.email?.charAt(0).toUpperCase() || 'U'}
-                </div>
+                {userProfile?.avatarUrl || firebaseUser?.photoURL ? (
+                  <img
+                    src={userProfile?.avatarUrl || firebaseUser?.photoURL || ''}
+                    alt={userProfile?.name || 'User avatar'}
+                    className="w-7 h-7 rounded-full object-cover shrink-0 border border-slate-200"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-slate-800 text-white flex items-center justify-center text-xs font-bold shrink-0">
+                    {userProfile?.name?.charAt(0) || firebaseUser?.email?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                )}
                 <div className="hidden sm:flex flex-col text-left">
                   <span className="text-xs font-bold text-slate-900 leading-tight truncate max-w-[120px]">
                     {userProfile?.name || firebaseUser?.email}
