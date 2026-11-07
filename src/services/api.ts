@@ -34,12 +34,27 @@ class ApiService {
       ...(options.headers || {}),
     };
 
-    const res = await fetch(url, { ...options, headers });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-      throw new Error(err.error || `Request failed with status ${res.status}`);
+    let retries = 2;
+    let delay = 300;
+
+    while (true) {
+      try {
+        const res = await fetch(url, { ...options, headers });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+          throw new Error(err.error || `Request failed with status ${res.status}`);
+        }
+        return res.json();
+      } catch (err: any) {
+        if (retries > 0 && (err.name === 'TypeError' || err.message?.includes('Failed to fetch'))) {
+          retries--;
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          delay *= 2;
+          continue;
+        }
+        throw err;
+      }
     }
-    return res.json();
   }
 
   // --- Auth & Users ---

@@ -55,41 +55,61 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Sync profile from Firestore or provision profile
   const fetchOrCreateProfile = async (fbUser: FirebaseUser): Promise<User> => {
-    const userDocRef = doc(db, 'users', fbUser.uid);
-    const snap = await getDoc(userDocRef);
-
-    if (snap.exists()) {
-      const data = snap.data() as User;
-      // Auto-grant admin role if email matches the configured admin account
-      if (fbUser.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase() && data.role !== 'admin') {
-        const adminProfile: User = { ...data, role: 'admin' };
-        await updateDoc(userDocRef, { role: 'admin' });
-        return adminProfile;
-      }
-      return data;
-    }
-
-    // Provision new user profile
     const isSuperAdmin = fbUser.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
     const defaultRole: UserRole = isSuperAdmin ? 'admin' : 'agency';
-    const defaultAgencyId = isSuperAdmin ? undefined : 'ag_skyline';
+    const defaultAgencyId = isSuperAdmin ? '' : 'ag_skyline';
 
-    const newProfile: User = {
+    const fallbackProfile: User = {
       id: fbUser.uid,
-      name: fbUser.displayName || fbUser.email?.split('@')[0] || 'Operations User',
+      name: fbUser.displayName || fbUser.email?.split('@')[0] || (isSuperAdmin ? 'Akash Thakare (Admin)' : 'Operations User'),
       email: fbUser.email || '',
       role: defaultRole,
       agencyId: defaultAgencyId,
       region: 'EMEA',
-      specialization: isSuperAdmin ? ['Urgent Triage', 'Global Ops'] : undefined,
+      specialization: isSuperAdmin ? ['Urgent Triage', 'Global Ops'] : [],
     };
 
-    await setDoc(userDocRef, {
-      ...newProfile,
-      createdAt: new Date().toISOString(),
-    });
+    try {
+      const userDocRef = doc(db, 'users', fbUser.uid);
+      const snap = await getDoc(userDocRef);
 
-    return newProfile;
+      if (snap.exists()) {
+        const data = snap.data() as User;
+        // Auto-grant admin role if email matches the configured admin account
+        if (isSuperAdmin && data.role !== 'admin') {
+          const adminProfile: User = { ...data, role: 'admin' };
+          updateDoc(userDocRef, { role: 'admin' }).catch(console.warn);
+          return adminProfile;
+        }
+        return data;
+      }
+
+      // Provision new user profile
+      const docPayload: Record<string, any> = {
+        id: fallbackProfile.id,
+        name: fallbackProfile.name,
+        email: fallbackProfile.email,
+        role: fallbackProfile.role,
+        agencyId: fallbackProfile.agencyId || '',
+        region: fallbackProfile.region || 'EMEA',
+        specialization: fallbackProfile.specialization && fallbackProfile.specialization.length > 0 ? fallbackProfile.specialization : [],
+        createdAt: new Date().toISOString(),
+      };
+
+      // Strict sanitize: strip any undefined keys
+      const sanitizedPayload: Record<string, any> = {};
+      for (const [key, value] of Object.entries(docPayload)) {
+        if (value !== undefined) {
+          sanitizedPayload[key] = value;
+        }
+      }
+
+      await setDoc(userDocRef, sanitizedPayload);
+      return fallbackProfile;
+    } catch (err: any) {
+      console.warn('Firestore user profile offline/unreachable, operating with authenticated session profile:', err?.message || err);
+      return fallbackProfile;
+    }
   };
 
   useEffect(() => {
@@ -103,8 +123,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUserProfile(profile);
           api.setCurrentUserId(profile.id);
         } catch (err: any) {
-          console.error('Failed to load user profile from Firestore:', err);
-          setError('Failed to load profile. Please verify your connection.');
+          console.warn('Authentication profile synchronization warning:', err);
         }
       } else {
         setFirebaseUser(null);
@@ -212,11 +231,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateUserRole = async (userId: string, newRole: UserRole, region?: Region) => {
     const userDocRef = doc(db, 'users', userId);
-    await updateDoc(userDocRef, {
+    const updatePayload: Record<string, any> = {
       role: newRole,
-      ...(region ? { region } : {}),
       updatedAt: new Date().toISOString(),
-    });
+    };
+    if (region) {
+      updatePayload.region = region;
+    }
+    await updateDoc(userDocRef, updatePayload);
     if (userProfile && userProfile.id === userId) {
       setUserProfile({ ...userProfile, role: newRole, ...(region ? { region } : {}) });
     }

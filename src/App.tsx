@@ -28,19 +28,30 @@ function AuthenticatedApp() {
   const [isCreateTicketOpen, setIsCreateTicketOpen] = useState(false);
   const [isDemoGuideOpen, setIsDemoGuideOpen] = useState(false);
 
+  const [ticketError, setTicketError] = useState<string | null>(null);
+
   // Load tickets on mount or user switch
   const loadTickets = async () => {
     if (!firebaseUser) return;
     try {
       setIsLoadingTickets(true);
+      setTicketError(null);
       const res = await api.getTickets({ limit: 100 });
       setTickets(res.tickets || []);
       if (selectedTicket) {
         const refreshed = res.tickets.find((t) => t.id === selectedTicket.id);
         if (refreshed) setSelectedTicket(refreshed);
       }
-    } catch (err) {
-      console.error('Failed to load tickets:', err);
+    } catch (err: any) {
+      console.warn('Initial ticket fetch hiccup, attempting recovery:', err?.message || err);
+      try {
+        await new Promise((r) => setTimeout(r, 800));
+        const retryRes = await api.getTickets({ limit: 100 });
+        setTickets(retryRes.tickets || []);
+      } catch (retryErr: any) {
+        console.error('Failed to load tickets after retry:', retryErr);
+        setTicketError(retryErr?.message || 'Failed to load tickets');
+      }
     } finally {
       setIsLoadingTickets(false);
     }
